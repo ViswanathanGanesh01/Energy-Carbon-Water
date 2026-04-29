@@ -207,7 +207,7 @@ df = get_virtual_table_data()
 
 @st.cache_data
 def get_interpolated_grid(values, coords, res):
-    """Caches interpolation grids. Drops NaN coordinates to prevent pyproj ProjError."""
+    """Caches interpolation grids. Drops NaN coordinates and clips pole boundaries to prevent pyproj ProjError."""
     # Ensure coords and values are synchronized and free of NaNs
     valid_mask = ~np.isnan(coords).any(axis=1) & ~np.isnan(values)
     clean_coords = coords[valid_mask]
@@ -216,8 +216,12 @@ def get_interpolated_grid(values, coords, res):
     if len(clean_coords) < 3:
         return None, None, None
 
-    lons = np.arange(-180, 181, res)
-    lats = np.arange(-90, 91, res)
+    # Fix: Use linspace and stop just short of 90 deg to avoid pole singularities in Robinson projection
+    num_lons = int(360 / res) + 1
+    num_lats = int(180 / res) + 1
+    lons = np.linspace(-180, 180, num_lons)
+    lats = np.linspace(-89.9, 89.9, num_lats) 
+    
     xx, yy = np.meshgrid(lons, lats)
     
     knn = KNeighborsRegressor(n_neighbors=3, weights='distance')
@@ -235,6 +239,7 @@ with st.sidebar:
     
     st.divider()
     liq_mode = st.selectbox("ASHRAE Liquid Mode", ["W32", "W40", "W45"])
+    # Extended resolution options
     res = st.select_slider("Map Resolution", options=[5.0, 4.5, 4.0, 3.5, 3.0, 2.5, 2.0, 1.5, 1.0, 0.5], value=5.0)
 
 # --- APP LOGIC ---
@@ -291,6 +296,7 @@ if not df.empty:
                     fig_a = plt.figure(figsize=(8, 5))
                     ax = plt.axes(projection=ccrs.Robinson())
                     ax.set_global()
+                    # Use air-specific cmap and range (1-6)
                     mesh = ax.pcolormesh(xx, yy, Z, cmap=air_arch_cmap, vmin=0.5, vmax=6.5, transform=ccrs.PlateCarree(), shading='nearest', rasterized=True)
                     ax.add_feature(cfeature.OCEAN, facecolor='#eef7fa', zorder=2)
                     ax.add_feature(cfeature.LAND, facecolor='#fdfdfd', zorder=0)
@@ -311,6 +317,7 @@ if not df.empty:
                     fig_l = plt.figure(figsize=(8, 5))
                     ax = plt.axes(projection=ccrs.Robinson())
                     ax.set_global()
+                    # Use liquid-specific cmap and range (7-12)
                     mesh = ax.pcolormesh(xx, yy, Z, cmap=liq_arch_cmap, vmin=6.5, vmax=12.5, transform=ccrs.PlateCarree(), shading='nearest', rasterized=True)
                     ax.add_feature(cfeature.OCEAN, facecolor='#eef7fa', zorder=2)
                     ax.add_feature(cfeature.LAND, facecolor='#fdfdfd', zorder=0)
