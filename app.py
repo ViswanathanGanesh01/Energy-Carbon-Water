@@ -41,7 +41,7 @@ ARCH_MAP = {
 # Reverse map for filtering
 INV_ARCH_MAP = {v: k for k, v in ARCH_MAP.items()}
 
-# ASHRAE bins per liquid scenario
+# ASHRAE bins for SUITABILITY calculation (Dynamic based on selected mode)
 LIQ_SCENARIOS = {
     "W32": [{"max": 35.0, "score": 5}, {"max": 40.1, "score": 4}, {"max": 45.1, "score": 3}],
     "W40": [{"max": 40.1, "score": 5}, {"max": 35.0, "score": 5}, {"max": 45.1, "score": 4}],
@@ -234,14 +234,32 @@ with st.sidebar:
 
 # --- APP LOGIC ---
 if not df.empty:
-    def score_row(row):
-        bins = LIQ_SCENARIOS[liq_mode] if row['ArchID'] > 6 else [{"max": 27.1, "score": 5}, {"max": 32.1, "score": 4}, {"max": 35.1, "score": 3}, {"max": 40.1, "score": 2}, {"max": 45.1, "score": 1}]
+    # 1. STATIC THERMAL COMPLIANCE (Actual attainment, independent of UI selectbox)
+    def static_score_row(row):
+        if row['ArchID'] <= 6:
+            # Static Air Attainment Bins
+            bins = [{"max": 27.1, "score": 5}, {"max": 32.1, "score": 4}, {"max": 35.1, "score": 3}, {"max": 40.1, "score": 2}, {"max": 45.1, "score": 1}]
+        else:
+            # Static Liquid Attainment Bins (W32, W40, W45, W+)
+            bins = [{"max": 35.0, "score": 5}, {"max": 40.1, "score": 4}, {"max": 45.1, "score": 3}, {"max": 100.0, "score": 2}]
         for b in bins:
             if row['MaxT'] <= b['max']: return b['score']
         return 0
 
-    df['Thermal Compliance'] = df.apply(score_row, axis=1)
+    df['Thermal Compliance'] = df.apply(static_score_row, axis=1)
     
+    # 2. DYNAMIC SUITABILITY SCORING (Assessment vs selected goal)
+    def dynamic_thermal_suitability(row, mode):
+        if row['ArchID'] <= 6:
+            # Air suitability is static for now
+            return row['Thermal Compliance'] / 5.0
+        else:
+            # Liquid suitability follows selected ASHRAE Liquid Mode requirements
+            bins = LIQ_SCENARIOS[mode]
+            for b in bins:
+                if row['MaxT'] <= b['max']: return b['score'] / 5.0
+            return 0.0
+
     def norm_metric(s, inv=True):
         if s.max() == s.min(): return s * 0 + 1.0
         n = (s - s.min()) / (s.max() - s.min() + 1e-9)
@@ -256,8 +274,11 @@ if not df.empty:
         df['CUE'] = df['PUE'] * 0.4
         
     df['n_cue'] = norm_metric(df['CUE'])
-    df['n_therm'] = df['Thermal Compliance'] / 5.0
     
+    # Recalculate dynamic thermal suitability based on selectbox
+    df['n_therm'] = df.apply(lambda r: dynamic_thermal_suitability(r, liq_mode), axis=1)
+    
+    # Calculate Suitability
     df['Suitability'] = (df['n_therm']*w_t + df['n_pue']*w_p + df['n_wue']*w_w + df['n_cue']*w_c).clip(0, 1)
 
     filtered = df[df['IT_Load'] == DEFAULT_IT_LOAD]
@@ -297,8 +318,8 @@ if not df.empty:
                         cb.set_ticklabels([ARCH_MAP[i] for i in range(1, 7)], rotation=45)
                         st.pyplot(fig_a)
                     except Exception as e:
-                        st.warning("⚠️ High resolution projection singularity encountered. Falling back to point view.")
-                        ax.scatter(map_data_air['Lon'], map_data_air['Lat'], f"Lat: {map_data_air['Lat']}, Lon: {map_data_air['Lon']}", c=map_data_air['ArchID'], cmap=air_arch_cmap, transform=ccrs.PlateCarree(), s=5)
+                        st.warning("⚠️ High resolution projection fallback.")
+                        ax.scatter(map_data_air['Lon'], map_data_air['Lat'], c=map_data_air['ArchID'], cmap=air_arch_cmap, transform=ccrs.PlateCarree(), s=5)
                         st.pyplot(fig_a)
                     plt.close(fig_a)
 
@@ -322,7 +343,7 @@ if not df.empty:
                         cb.set_ticklabels([ARCH_MAP[i] for i in range(7, 13)], rotation=45)
                         st.pyplot(fig_l)
                     except Exception as e:
-                        st.warning("⚠️ Projection singularity encountered. Using point view fallback.")
+                        st.warning("⚠️ Projection singularity fallback.")
                         ax.scatter(map_data_liq['Lon'], map_data_liq['Lat'], c=map_data_liq['ArchID'], cmap=liq_arch_cmap, transform=ccrs.PlateCarree(), s=5)
                         st.pyplot(fig_l)
                     plt.close(fig_l)
@@ -360,12 +381,13 @@ if not df.empty:
                                 cb = plt.colorbar(mesh, orientation='horizontal', pad=0.08, shrink=0.8)
                                 cb.ax.tick_params(labelsize=8); cb.set_label(f"{metric} {unit}", fontsize=10, labelpad=5)
                                 
+                                # UPDATED STATIC LABELS (0=Failed/R, 5=Best/Rec)
                                 if metric == 'Thermal Compliance':
                                     cb.set_ticks([0, 1, 2, 3, 4, 5])
                                     if current_arch_id <= 6:
-                                        cb.set_ticklabels(['A4+', 'A4', 'A3', 'A2', 'A1', 'R'], fontsize=8)
+                                        cb.set_ticklabels(['R', 'A4', 'A3', 'A2', 'A1', 'Rec'], fontsize=8)
                                     else:
-                                        cb.set_ticklabels(['W+', 'W45', 'W40', 'W32', 'W27', 'R'], fontsize=8)
+                                        cb.set_ticklabels(['R', 'NA', 'W+', 'W45', 'W40', 'W32'], fontsize=8)
                                         
                                 plt.tight_layout(pad=0.1); st.pyplot(fig_m, use_container_width=True)
                             except:
