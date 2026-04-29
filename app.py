@@ -177,7 +177,7 @@ def get_virtual_table_data():
         c['Long'] = c['Long'].apply(parse_coordinate)
         c = c.dropna(subset=['Lat', 'Long'])
         
-        # EXCLUDE ANTARCTICA
+        # EXCLUDE ANTARCTICA DATA
         c = c[c['Lat'] > -60]
         
         cef_col = next((col for col in c.columns if 'CEF' in col or 'CO2' in col), 'CEF_kgCO2_per_kWh')
@@ -197,7 +197,7 @@ df = get_virtual_table_data()
 
 @st.cache_data
 def get_interpolated_grid(values, coords, res):
-    """Caches interpolation grids. Strictly clips boundaries to prevent pyproj ProjError."""
+    """Caches interpolation grids. Strictly clips boundaries and excludes Antarctica to prevent pyproj ProjError."""
     valid_mask = ~np.isnan(coords).any(axis=1) & ~np.isnan(values)
     clean_coords = coords[valid_mask]
     clean_values = values[valid_mask]
@@ -205,13 +205,13 @@ def get_interpolated_grid(values, coords, res):
     if len(clean_coords) < 3:
         return None, None, None
 
-    # Defense against ProjError: Use linspace and stop short of 90/180 degree boundaries
+    # Defense against ProjError and Exclusion of Antarctica
+    # We clip latitudes to -60 to completely exclude the Antarctic region from the heatmap overlay
     num_lons = int(360 / res) + 1
-    num_lats = int(180 / res) + 1
+    num_lats = int((88.0 + 60.0) / res) + 1
     
-    # We use -179.9 to 179.9 and -88 to 88 to avoid projection singularities at the poles/dateline
     lons = np.linspace(-179.9, 179.9, num_lons)
-    lats = np.linspace(-88.0, 88.0, num_lats) 
+    lats = np.linspace(-60.0, 88.0, num_lats) 
     
     xx, yy = np.meshgrid(lons, lats)
     
@@ -298,7 +298,7 @@ if not df.empty:
                         st.pyplot(fig_a)
                     except Exception as e:
                         st.warning("⚠️ High resolution projection singularity encountered. Falling back to point view.")
-                        ax.scatter(map_data_air['Lon'], map_data_air['Lat'], c=map_data_air['ArchID'], cmap=air_arch_cmap, transform=ccrs.PlateCarree(), s=5)
+                        ax.scatter(map_data_air['Lon'], map_data_air['Lat'], f"Lat: {map_data_air['Lat']}, Lon: {map_data_air['Lon']}", c=map_data_air['ArchID'], cmap=air_arch_cmap, transform=ccrs.PlateCarree(), s=5)
                         st.pyplot(fig_a)
                     plt.close(fig_a)
 
@@ -360,14 +360,11 @@ if not df.empty:
                                 cb = plt.colorbar(mesh, orientation='horizontal', pad=0.08, shrink=0.8)
                                 cb.ax.tick_params(labelsize=8); cb.set_label(f"{metric} {unit}", fontsize=10, labelpad=5)
                                 
-                                # UPDATED DYNAMIC THERMAL LABELS
                                 if metric == 'Thermal Compliance':
                                     cb.set_ticks([0, 1, 2, 3, 4, 5])
                                     if current_arch_id <= 6:
-                                        # Air Standards (ASHRAE A1-A4)
                                         cb.set_ticklabels(['A4+', 'A4', 'A3', 'A2', 'A1', 'R'], fontsize=8)
                                     else:
-                                        # Liquid Standards (ASHRAE Liquid Class)
                                         cb.set_ticklabels(['W+', 'W45', 'W40', 'W32', 'W27', 'R'], fontsize=8)
                                         
                                 plt.tight_layout(pad=0.1); st.pyplot(fig_m, use_container_width=True)
