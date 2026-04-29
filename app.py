@@ -381,14 +381,14 @@ if not df.empty:
                                 cb = plt.colorbar(mesh, orientation='horizontal', pad=0.08, shrink=0.8)
                                 cb.ax.tick_params(labelsize=8); cb.set_label(f"{metric} {unit}", fontsize=10, labelpad=5)
                                 
-                                # UPDATED STATIC LABELS (Liquid labels revised to remove 'R')
+                                # UPDATED STATIC LABELS (Fixed redundant NA)
                                 if metric == 'Thermal Compliance':
                                     cb.set_ticks([0, 1, 2, 3, 4, 5])
                                     if current_arch_id <= 6:
                                         cb.set_ticklabels(['R', 'A4', 'A3', 'A2', 'A1', 'Rec'], fontsize=8)
                                     else:
-                                        # Removed 'R' for liquid cooling
-                                        cb.set_ticklabels(['NA', 'NA', 'W+', 'W45', 'W40', 'W32'], fontsize=8)
+                                        # Descriptive labels for liquid cooling scale
+                                        cb.set_ticklabels(['Fail', 'NA', 'W+', 'W45', 'W40', 'W32'], fontsize=8)
                                         
                                 plt.tight_layout(pad=0.1); st.pyplot(fig_m, use_container_width=True)
                             except:
