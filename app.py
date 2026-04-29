@@ -16,7 +16,8 @@ plt.rcParams['savefig.dpi'] = 200
 plt.rcParams['font.family'] = 'sans-serif' 
 
 # --- CONFIGURATION & PATHS ---
-# UPDATED FOR CLOUD DEPLOYMENT: Using relative paths
+# Relative paths are mandatory for Cloud deployment.
+# Ensure these files are in the same folder as app.py on GitHub.
 PARQUET_ROOT = "results_parquet"
 CLIMATE_STATIONS_CSV = "climate_zones.csv"
 STATION_CARBON_MAPPING_CSV = "station_carbon_mapping.csv"
@@ -118,7 +119,7 @@ def parse_coordinate(coord_str):
 @st.cache_data
 def get_virtual_table_data():
     if not os.path.exists(PARQUET_ROOT):
-        st.error(f"Data folder '{PARQUET_ROOT}' not found. Please ensure it is uploaded to your GitHub repository.")
+        st.error(f"📁 Data folder '{PARQUET_ROOT}' not found in GitHub. Please ensure the folder is in the root directory.")
         return pd.DataFrame()
 
     con = duckdb.connect(database=':memory:')
@@ -160,11 +161,17 @@ def get_virtual_table_data():
     metrics_df['MaxT'] = metrics_df['MaxT'].apply(lambda x: x - 273.15 if x > 150 else x)
     
     try:
-        # Load and clean CSV headers
-        if not os.path.exists(CLIMATE_STATIONS_CSV) or not os.path.exists(STATION_CARBON_MAPPING_CSV):
-            st.error("Reference CSV files missing from root directory.")
+        # Robust file existence check with diagnostic info
+        missing_files = []
+        if not os.path.exists(CLIMATE_STATIONS_CSV): missing_files.append(CLIMATE_STATIONS_CSV)
+        if not os.path.exists(STATION_CARBON_MAPPING_CSV): missing_files.append(STATION_CARBON_MAPPING_CSV)
+        
+        if missing_files:
+            st.error(f"❌ Missing required CSV files in GitHub: {', '.join(missing_files)}")
+            st.info("💡 Ensure 'climate_zones.csv' and 'station_carbon_mapping.csv' are uploaded to your main repository folder.")
             return metrics_df
 
+        # Load and clean CSV headers
         z = pd.read_csv(CLIMATE_STATIONS_CSV)
         z.columns = z.columns.str.strip()
         z['ClimateKey'] = z['Zone'].astype(str).str.strip().str.upper().str.replace("CLIMATE", "", regex=False).str.strip("_").str.strip()
