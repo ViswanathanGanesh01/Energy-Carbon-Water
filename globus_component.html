@@ -1,176 +1,153 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OpenGlobus Energy-Carbon-Water</title>
-    <!-- OpenGlobus CSS and JS -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/openglobus/openglobus@master/dist/og.css">
-    <script src="https://cdn.jsdelivr.net/gh/openglobus/openglobus@master/dist/og.umd.js"></script>
-    <style>
-        body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
-        #globus { width: 100vw; height: 100vh; }
-        
-        .info-panel {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            background: rgba(255, 255, 255, 0.95);
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
-            pointer-events: none;
-            max-width: 250px;
-            display: none;
-            z-index: 100;
-            border-left: 5px solid #1a9641;
-        }
+<!-- OpenGlobus Resources -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/openglobus/openglobus@master/dist/og.css">
+<script src="https://cdn.jsdelivr.net/gh/openglobus/openglobus@master/dist/og.umd.js"></script>
 
-        .legend {
-            position: absolute;
-            bottom: 30px;
-            right: 20px;
-            background: rgba(255, 255, 255, 0.9);
-            padding: 12px;
-            border-radius: 8px;
-            font-size: 12px;
-            z-index: 100;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-        }
-
-        .legend-item { display: flex; align-items: center; margin-bottom: 4px; }
-        .color-box { width: 14px; height: 14px; margin-right: 8px; border-radius: 2px; }
-        
-        #loading {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            font-weight: bold;
-            text-shadow: 2px 2px 4px black;
-        }
-    </style>
-</head>
-<body>
-    <div id="loading">Initializing 3D Environment...</div>
-    <div id="globus"></div>
+<style>
+    /* Full screen setup */
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     
-    <div id="info" class="info-panel">
-        <h4 id="info-site" style="margin: 0 0 5px 0; color: #333;">Site Name</h4>
-        <div id="info-content" style="font-size: 13px; line-height: 1.5; color: #444;"></div>
-    </div>
+    /* The Actual 3D Container */
+    #globus { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+    
+    /* Loading Overlay */
+    #loading {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.8); color: white; display: flex;
+        justify-content: center; align-items: center; z-index: 2000;
+        font-size: 1.2rem; letter-spacing: 1px;
+    }
 
-    <div class="legend">
-        <strong style="display:block; margin-bottom: 8px; border-bottom: 1px solid #ccc; padding-bottom: 4px;">Suitability Index</strong>
-        <div class="legend-item"><div class="color-box" style="background: #1a9641;"></div> Optimal (0.8 - 1.0)</div>
-        <div class="legend-item"><div class="color-box" style="background: #a6d96a;"></div> High (0.6 - 0.8)</div>
-        <div class="legend-item"><div class="color-box" style="background: #ffffbf;"></div> Good (0.4 - 0.6)</div>
-        <div class="legend-item"><div class="color-box" style="background: #fdae61;"></div> Fair (0.2 - 0.4)</div>
-        <div class="legend-item"><div class="color-box" style="background: #d7191c;"></div> Low (0.0 - 0.2)</div>
-    </div>
+    /* Hover Tooltip */
+    .info-panel {
+        position: absolute; top: 20px; left: 20px; background: rgba(255, 255, 255, 0.98);
+        padding: 15px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        pointer-events: none; max-width: 280px; display: none; z-index: 1000;
+        border-left: 6px solid #1a9641; transition: opacity 0.2s;
+    }
 
-    <script>
-        // --- STREAMLIT INTEGRATION ---
-        // This variable is replaced by Python's json.dumps() 
-        let siteData = /* DATA_PLACEHOLDER */ [];
+    /* Map Legend */
+    .legend {
+        position: absolute; bottom: 40px; right: 20px; background: rgba(255, 255, 255, 0.9);
+        padding: 15px; border-radius: 10px; font-size: 13px; z-index: 1000;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 1px solid #ddd;
+    }
+    .legend-title { font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; display: block; }
+    .legend-item { display: flex; align-items: center; margin-bottom: 5px; }
+    .color-box { width: 16px; height: 16px; margin-right: 10px; border-radius: 3px; }
+</style>
 
-        function getColor(suitability) {
-            if (suitability > 0.8) return '#1a9641';
-            if (suitability > 0.6) return '#a6d96a';
-            if (suitability > 0.4) return '#ffffbf';
-            if (suitability > 0.2) return '#fdae61';
-            return '#d7191c';
+
+<!-- UI Elements -->
+<div id="loading">Initializing Global 3D Engine...</div>
+<div id="globus"></div>
+
+<div id="info" class="info-panel">
+    <h4 id="info-site" style="margin: 0 0 8px 0; color: #111; font-size: 16px;">Site Name</h4>
+    <div id="info-content" style="font-size: 14px; line-height: 1.6; color: #333;"></div>
+</div>
+
+<div class="legend">
+    <span class="legend-title">Suitability Index</span>
+    <div class="legend-item"><div class="color-box" style="background: #1a9641;"></div> Optimal (0.8 - 1.0)</div>
+    <div class="legend-item"><div class="color-box" style="background: #a6d96a;"></div> High (0.6 - 0.8)</div>
+    <div class="legend-item"><div class="color-box" style="background: #ffffbf; border: 1px solid #ddd;"></div> Good (0.4 - 0.6)</div>
+    <div class="legend-item"><div class="color-box" style="background: #fdae61;"></div> Fair (0.2 - 0.4)</div>
+    <div class="legend-item"><div class="color-box" style="background: #d7191c;"></div> Low (0.0 - 0.2)</div>
+</div>
+
+<script>
+    // DATA INJECTION POINT: Python will replace the empty array between markers
+    let siteData = /* DATA_START */ [] /* DATA_END */;
+
+    // Color mapping function
+    function getSuitabilityColor(val) {
+        if (val > 0.8) return '#1a9641';
+        if (val > 0.6) return '#a6d96a';
+        if (val > 0.4) return '#ffffbf';
+        if (val > 0.2) return '#fdae61';
+        return '#d7191c';
+    }
+
+    window.onload = function() {
+        // 1. Initialize Base Layer (OpenStreetMap)
+        const osm = new og.layer.XYZ("OpenStreetMap", {
+            isBaseLayer: true,
+            url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            visibility: true,
+            attribution: 'Data @ OpenStreetMap'
+        });
+
+        // 2. Create the Globe
+        const globus = new og.Globus({
+            target: "globus",
+            terrain: new og.terrain.GlobusTerrain(),
+            layers: [osm],
+            autoHighlight: true
+        });
+
+        // 3. Create Vector Layer for Data Points
+        const pointLayer = new og.layer.Vector("CoolingSites", {
+            clampToGround: true,
+            relativeToGround: true
+        });
+        globus.planet.addLayer(pointLayer);
+
+        // 4. Data Processing Function
+        function renderPoints(data) {
+            if (!data || data.length === 0) {
+                console.warn("No data available to render on globe.");
+                return;
+            }
+
+            pointLayer.clear();
+            
+            data.forEach(item => {
+                const color = getSuitabilityColor(item.Suitability);
+                const entity = new og.Entity({
+                    lonlat: [item.Lon, item.Lat],
+                    billboard: {
+                        src: 'https://cdn4.iconfinder.com/data/icons/small-n-flat/24/678111-map-marker-512.png',
+                        width: 24, height: 24, color: color
+                    },
+                    properties: {
+                        name: item.ClimateKey || "Research Station",
+                        arch: item.Architecture || "N/A",
+                        suit: (item.Suitability * 100).toFixed(1) + "%",
+                        pue: item.PUE ? item.PUE.toFixed(3) : "N/A",
+                        wue: item.WUE ? item.WUE.toFixed(2) : "N/A",
+                        rawVal: item.Suitability
+                    }
+                });
+                pointLayer.add(entity);
+            });
+
+            // Auto-zoom to global view
+            globus.planet.flyLonLat(new og.LonLat(10, 20, 16000000));
         }
 
-        window.onload = function() {
-            const osm = new og.layer.XYZ("OpenStreetMap", {
-                isBaseLayer: true,
-                url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-                visibility: true,
-                attribution: 'Data @ <a href="http://www.openstreetmap.org/">OpenStreetMap</a> contributors'
-            });
+        // 5. Tooltip Interaction
+        pointLayer.events.on("mouseenter", function (e) {
+            const info = document.getElementById('info');
+            const props = e.pickingObject.properties;
+            info.style.display = 'block';
+            info.style.borderLeftColor = getSuitabilityColor(props.rawVal);
+            document.getElementById('info-site').innerText = props.name;
+            document.getElementById('info-content').innerHTML = `
+                <strong>Architecture:</strong> ${props.arch}<br/>
+                <strong>Suitability:</strong> <span style="font-weight:bold; color:${getSuitabilityColor(props.rawVal)}">${props.suit}</span><br/>
+                <strong>Mean PUE:</strong> ${props.pue}<br/>
+                <strong>Water Intensity:</strong> ${props.wue} L/kWh
+            `;
+        });
 
-            const globus = new og.Globus({
-                target: "globus",
-                terrain: new og.terrain.GlobusTerrain(),
-                layers: [osm],
-                autoHighlight: true
-            });
+        pointLayer.events.on("mouseleave", function () {
+            document.getElementById('info').style.display = 'none';
+        });
 
-            const pointLayer = new og.layer.Vector("SuitabilityPoints", {
-                clampToGround: true,
-                relativeToGround: true
-            });
-
-            globus.planet.addLayer(pointLayer);
-
-            function updateData(data) {
-                if (!data || data.length === 0) return;
-                
-                pointLayer.clear();
-                document.getElementById('loading').style.display = 'none';
-                
-                data.forEach(item => {
-                    const color = getColor(item.Suitability);
-                    const entity = new og.Entity({
-                        lonlat: [item.Lon, item.Lat],
-                        billboard: {
-                            src: 'https://cdn0.iconfinder.com/data/icons/small-n-flat/24/678111-map-marker-512.png',
-                            width: 20,
-                            height: 20,
-                            color: color
-                        },
-                        properties: {
-                            name: item.ClimateKey || "Station",
-                            arch: item.Architecture || "Unknown",
-                            suit: (item.Suitability * 100).toFixed(1) + "%",
-                            pue: item.PUE ? item.PUE.toFixed(3) : "N/A",
-                            wue: item.WUE ? item.WUE.toFixed(2) : "N/A",
-                            rawSuit: item.Suitability
-                        }
-                    });
-                    pointLayer.add(entity);
-                });
-                
-                // If data exists, fly to a global view
-                globus.planet.flyLonLat(new og.LonLat(0, 20, 15000000));
-            }
-
-            // Tooltip interaction
-            pointLayer.events.on("mouseenter", function (e) {
-                const info = document.getElementById('info');
-                const props = e.pickingObject.properties;
-                info.style.display = 'block';
-                info.style.borderLeftColor = getColor(props.rawSuit);
-                document.getElementById('info-site').innerText = props.name;
-                document.getElementById('info-content').innerHTML = `
-                    <div style="margin-top:5px;">
-                        <strong>Arch:</strong> ${props.arch}<br/>
-                        <strong>Suitability:</strong> <span style="color:${getColor(props.rawSuit)}; font-weight:bold;">${props.suit}</span><br/>
-                        <strong>PUE:</strong> ${props.pue}<br/>
-                        <strong>WUE:</strong> ${props.wue} L/kWh
-                    </div>
-                `;
-            });
-
-            pointLayer.events.on("mouseleave", function (e) {
-                document.getElementById('info').style.display = 'none';
-            });
-
-            // Initial load from placeholder
-            if (siteData && siteData.length > 0) {
-                updateData(siteData);
-            } else {
-                // Fallback mock data if no data injected
-                const mockData = [
-                    { Lat: 40.7128, Lon: -74.0060, Suitability: 0.85, Architecture: "AXEW", ClimateKey: "New York" },
-                    { Lat: 34.0522, Lon: -118.2437, Suitability: 0.45, Architecture: "LCEW", ClimateKey: "Los Angeles" },
-                    { Lat: 51.5074, Lon: -0.1278, Suitability: 0.95, Architecture: "ACXD", ClimateKey: "London" }
-                ];
-                setTimeout(() => { if(!siteData.length) updateData(mockData); }, 1500);
-            }
-        };
-    </script>
-</body>
-</html>
+        // 6. Finalize Initialization
+        document.getElementById('loading').style.display = 'none';
+        if (siteData && siteData.length > 0) {
+            renderPoints(siteData);
+        }
+    };
+</script>

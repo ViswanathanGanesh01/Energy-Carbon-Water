@@ -51,7 +51,7 @@ thermal_colors = ["#d3d3d3", "#e5f5e0", "#a1d99b", "#74c476", "#31a354", "#006d2
 custom_thermal_cmap = LinearSegmentedColormap.from_list("thermal_grey_green", thermal_colors, N=256)
 arch_colors = plt.cm.tab20(np.linspace(0, 1, 12))
 air_arch_cmap = LinearSegmentedColormap.from_list("air_arch", arch_colors[:6], N=6)
-liq_arch_cmap = LinearSegmentedColormap.from_list("liq_arch", arch_colors[6:], N=6)
+liq_arch_cmap = LinearSegmentedColormap.from_list("liq_arch", arch_colors[6:], N=12) # Fixed length
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Energy-Carbon-Water", layout="wide", page_icon="🌍")
@@ -203,14 +203,23 @@ if not df.empty:
         globus_df['Architecture'] = globus_df['ArchID'].map(ARCH_MAP)
         data_to_send = globus_df[['Lat', 'Lon', 'Suitability', 'Architecture', 'ClimateKey', 'PUE', 'WUE']].dropna().to_dict(orient='records')
         
-        try:
-            with open("globus_component.html", "r", encoding='utf-8') as f:
-                html_template = f.read()
-            # Injecting data into the placeholder
-            globus_html = html_template.replace("/* DATA_PLACEHOLDER */ []", json.dumps(data_to_send))
-            components.html(globus_html, height=600, scrolling=False)
-        except Exception as e:
-            st.error(f"Could not load 3D Globus: {e}. Ensure 'globus_component.html' is in the root directory.")
+        if not data_to_send:
+            st.warning("No data points available for the current filters.")
+        else:
+            try:
+                with open("globus_component.html", "r", encoding='utf-8') as f:
+                    html_template = f.read()
+                
+                # Using a more robust replacement strategy using regex or markers
+                import re
+                replacement_data = json.dumps(data_to_send)
+                # Matches the specific comment-marker regardless of minor whitespace variations
+                pattern = r"/\* DATA_START \*/.*?/\* DATA_END \*/"
+                globus_html = re.sub(pattern, f"/* DATA_START */ {replacement_data} /* DATA_END */", html_template, flags=re.DOTALL)
+                
+                components.html(globus_html, height=600, scrolling=False)
+            except Exception as e:
+                st.error(f"Could not load 3D Globus: {e}. Ensure 'globus_component.html' is in the root directory.")
 
         st.divider()
         st.subheader("Regional Comparison (Static Robinson Projection)")
