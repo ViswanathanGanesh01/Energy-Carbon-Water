@@ -234,14 +234,25 @@ with st.sidebar:
 
 # --- APP LOGIC ---
 if not df.empty:
-    # 1. STATIC THERMAL COMPLIANCE (Actual attainment, independent of UI selectbox)
+    # 1. STATIC THERMAL COMPLIANCE (Actual attainment categories)
     def static_score_row(row):
         if row['ArchID'] <= 6:
-            # Static Air Attainment Bins
-            bins = [{"max": 27.1, "score": 5}, {"max": 32.1, "score": 4}, {"max": 35.1, "score": 3}, {"max": 40.1, "score": 2}, {"max": 45.1, "score": 1}]
+            # Air: A4, A3, A2, A1, Rec (5 categories)
+            bins = [
+                {"max": 27.1, "score": 5}, # Rec
+                {"max": 32.1, "score": 4}, # A1
+                {"max": 35.1, "score": 3}, # A2
+                {"max": 40.1, "score": 2}, # A3
+                {"max": 45.1, "score": 1}  # A4
+            ]
         else:
-            # Static Liquid Attainment Bins (W32, W40, W45, W+)
-            bins = [{"max": 35.0, "score": 5}, {"max": 40.1, "score": 4}, {"max": 45.1, "score": 3}, {"max": 100.0, "score": 2}]
+            # Liquid: W32, W40, W45, W+ (4 categories)
+            bins = [
+                {"max": 32.1, "score": 4}, # W32
+                {"max": 40.1, "score": 3}, # W40
+                {"max": 45.1, "score": 2}, # W45
+                {"max": 100.0, "score": 1} # W+
+            ]
         for b in bins:
             if row['MaxT'] <= b['max']: return b['score']
         return 0
@@ -251,10 +262,11 @@ if not df.empty:
     # 2. DYNAMIC SUITABILITY SCORING (Assessment vs selected goal)
     def dynamic_thermal_suitability(row, mode):
         if row['ArchID'] <= 6:
-            # Air suitability is static for now
+            # Air suitability normalized to 5
             return row['Thermal Compliance'] / 5.0
         else:
             # Liquid suitability follows selected ASHRAE Liquid Mode requirements
+            # We normalize to 5.0 to maintain weight consistency with air
             bins = LIQ_SCENARIOS[mode]
             for b in bins:
                 if row['MaxT'] <= b['max']: return b['score'] / 5.0
@@ -381,18 +393,20 @@ if not df.empty:
                                 cb = plt.colorbar(mesh, orientation='horizontal', pad=0.08, shrink=0.8)
                                 cb.ax.tick_params(labelsize=8); cb.set_label(f"{metric} {unit}", fontsize=10, labelpad=5)
                                 
-                                # UPDATED STATIC LABELS (Fixed redundant NA)
+                                # UPDATED SIMPLIFIED LABELS
                                 if metric == 'Thermal Compliance':
-                                    cb.set_ticks([0, 1, 2, 3, 4, 5])
                                     if current_arch_id <= 6:
-                                        cb.set_ticklabels(['R', 'A4', 'A3', 'A2', 'A1', 'Rec'], fontsize=8)
+                                        # Air: 5 categories
+                                        cb.set_ticks([1, 2, 3, 4, 5])
+                                        cb.set_ticklabels(['A4', 'A3', 'A2', 'A1', 'Rec'], fontsize=8)
                                     else:
-                                        # Descriptive labels for liquid cooling scale
-                                        cb.set_ticklabels(['Fail', 'NA', 'W+', 'W45', 'W40', 'W32'], fontsize=8)
+                                        # Liquid: 4 categories
+                                        cb.set_ticks([1, 2, 3, 4])
+                                        cb.set_ticklabels(['W+', 'W45', 'W40', 'W32'], fontsize=8)
                                         
                                 plt.tight_layout(pad=0.1); st.pyplot(fig_m, use_container_width=True)
                             except:
-                                ax.scatter(panel_df['Lon'], panel_df['Lat'], f"Lat: {panel_df['Lat']}, Lon: {panel_df['Lon']}", c=panel_df[metric], cmap=cmap, vmin=v_range[0], vmax=v_range[1], transform=ccrs.PlateCarree(), s=3)
+                                ax.scatter(panel_df['Lon'], panel_df['Lat'], c=panel_df[metric], cmap=cmap, vmin=v_range[0], vmax=v_range[1], transform=ccrs.PlateCarree(), s=3)
                                 st.pyplot(fig_m, use_container_width=True)
                         plt.close(fig_m)
 
