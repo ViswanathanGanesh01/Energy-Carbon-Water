@@ -381,17 +381,18 @@ if not df.empty:
                                 cb = plt.colorbar(mesh, orientation='horizontal', pad=0.08, shrink=0.8)
                                 cb.ax.tick_params(labelsize=8); cb.set_label(f"{metric} {unit}", fontsize=10, labelpad=5)
                                 
-                                # UPDATED STATIC LABELS (0=Failed/R, 5=Best/Rec)
+                                # UPDATED STATIC LABELS (Liquid labels revised to remove 'R')
                                 if metric == 'Thermal Compliance':
                                     cb.set_ticks([0, 1, 2, 3, 4, 5])
                                     if current_arch_id <= 6:
                                         cb.set_ticklabels(['R', 'A4', 'A3', 'A2', 'A1', 'Rec'], fontsize=8)
                                     else:
-                                        cb.set_ticklabels(['R', 'NA', 'W+', 'W45', 'W40', 'W32'], fontsize=8)
+                                        # Removed 'R' for liquid cooling
+                                        cb.set_ticklabels(['NA', 'NA', 'W+', 'W45', 'W40', 'W32'], fontsize=8)
                                         
                                 plt.tight_layout(pad=0.1); st.pyplot(fig_m, use_container_width=True)
                             except:
-                                ax.scatter(panel_df['Lon'], panel_df['Lat'], c=panel_df[metric], cmap=cmap, vmin=v_range[0], vmax=v_range[1], transform=ccrs.PlateCarree(), s=3)
+                                ax.scatter(panel_df['Lon'], panel_df['Lat'], f"Lat: {panel_df['Lat']}, Lon: {panel_df['Lon']}", c=panel_df[metric], cmap=cmap, vmin=v_range[0], vmax=v_range[1], transform=ccrs.PlateCarree(), s=3)
                                 st.pyplot(fig_m, use_container_width=True)
                         plt.close(fig_m)
 
