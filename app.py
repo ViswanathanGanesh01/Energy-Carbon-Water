@@ -240,7 +240,7 @@ with st.sidebar:
     st.divider()
     liq_mode = st.selectbox("ASHRAE Liquid Mode", ["W32", "W40", "W45"])
     # Extended resolution options
-    res = st.select_slider("Map Resolution", options=[5.0, 4.5, 4.0, 3.5, 3.0, 2.5, 2.0, 1.5, 1.0, 0.5], value=5.0)
+    res = st.select_slider("Map Resolution", options=[5.0, 4.5, 4.0, 3.5, 3.0, 2.5, 2.0, 1.5, 1.0], value=5.0)
 
 # --- APP LOGIC ---
 if not df.empty:
