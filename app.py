@@ -17,7 +17,6 @@ plt.rcParams['font.family'] = 'sans-serif'
 
 # --- CONFIGURATION & PATHS ---
 # Relative paths are mandatory for Cloud deployment.
-# Ensure these files are in the same folder as app.py on GitHub.
 PARQUET_ROOT = "results_parquet"
 CLIMATE_STATIONS_CSV = "climate_zones.csv"
 STATION_CARBON_MAPPING_CSV = "station_carbon_mapping.csv"
@@ -119,7 +118,7 @@ def parse_coordinate(coord_str):
 @st.cache_data
 def get_virtual_table_data():
     if not os.path.exists(PARQUET_ROOT):
-        st.error(f"📁 Data folder '{PARQUET_ROOT}' not found in GitHub. Please ensure the folder is in the root directory.")
+        st.error(f"📁 Data folder '{PARQUET_ROOT}' not found in GitHub.")
         return pd.DataFrame()
 
     con = duckdb.connect(database=':memory:')
@@ -161,17 +160,10 @@ def get_virtual_table_data():
     metrics_df['MaxT'] = metrics_df['MaxT'].apply(lambda x: x - 273.15 if x > 150 else x)
     
     try:
-        # Robust file existence check with diagnostic info
-        missing_files = []
-        if not os.path.exists(CLIMATE_STATIONS_CSV): missing_files.append(CLIMATE_STATIONS_CSV)
-        if not os.path.exists(STATION_CARBON_MAPPING_CSV): missing_files.append(STATION_CARBON_MAPPING_CSV)
-        
-        if missing_files:
-            st.error(f"❌ Missing required CSV files in GitHub: {', '.join(missing_files)}")
-            st.info("💡 Ensure 'climate_zones.csv' and 'station_carbon_mapping.csv' are uploaded to your main repository folder.")
+        if not os.path.exists(CLIMATE_STATIONS_CSV) or not os.path.exists(STATION_CARBON_MAPPING_CSV):
+            st.error(f"❌ Missing required CSV files.")
             return metrics_df
 
-        # Load and clean CSV headers
         z = pd.read_csv(CLIMATE_STATIONS_CSV)
         z.columns = z.columns.str.strip()
         z['ClimateKey'] = z['Zone'].astype(str).str.strip().str.upper().str.replace("CLIMATE", "", regex=False).str.strip("_").str.strip()
@@ -181,23 +173,18 @@ def get_virtual_table_data():
         c.columns = c.columns.str.strip()
         c['StationNumber'] = c['StationID'].astype(str).str.strip().str.zfill(6)
         
-        # Clean and validate Lat/Long
         c['Lat'] = c['Lat'].apply(parse_coordinate)
         c['Long'] = c['Long'].apply(parse_coordinate)
         c = c.dropna(subset=['Lat', 'Long'])
         
-        # EXCLUDE ANTARCTICA FROM STUDY (Boundary Lat > -60)
+        # EXCLUDE ANTARCTICA
         c = c[c['Lat'] > -60]
         
-        # Safely identify CEF column
         cef_col = next((col for col in c.columns if 'CEF' in col or 'CO2' in col), 'CEF_kgCO2_per_kWh')
-        if cef_col not in c.columns:
-            c[cef_col] = 0.4 # Default fallback
+        if cef_col not in c.columns: c[cef_col] = 0.4
             
         target_mapping_cols = ['StationNumber', 'Lat', 'Long', cef_col]
-        
         geo = pd.merge(z[['StationNumber', 'ClimateKey']], c[target_mapping_cols], on='StationNumber')
-        # Standardize CEF name
         if cef_col != 'CEF_kgCO2_per_kWh':
             geo = geo.rename(columns={cef_col: 'CEF_kgCO2_per_kWh'})
             
@@ -210,8 +197,7 @@ df = get_virtual_table_data()
 
 @st.cache_data
 def get_interpolated_grid(values, coords, res):
-    """Caches interpolation grids. Drops NaN coordinates and clips pole boundaries to prevent pyproj ProjError."""
-    # Ensure coords and values are synchronized and free of NaNs
+    """Caches interpolation grids. Strictly clips boundaries to prevent pyproj ProjError."""
     valid_mask = ~np.isnan(coords).any(axis=1) & ~np.isnan(values)
     clean_coords = coords[valid_mask]
     clean_values = values[valid_mask]
@@ -219,11 +205,13 @@ def get_interpolated_grid(values, coords, res):
     if len(clean_coords) < 3:
         return None, None, None
 
-    # Fix: Use linspace and stop just short of 90 deg to avoid pole singularities in Robinson projection
+    # Defense against ProjError: Use linspace and stop short of 90/180 degree boundaries
     num_lons = int(360 / res) + 1
     num_lats = int(180 / res) + 1
-    lons = np.linspace(-180, 180, num_lons)
-    lats = np.linspace(-89.9, 89.9, num_lats) 
+    
+    # We use -179.9 to 179.9 and -88 to 88 to avoid projection singularities at the poles/dateline
+    lons = np.linspace(-179.9, 179.9, num_lons)
+    lats = np.linspace(-88.0, 88.0, num_lats) 
     
     xx, yy = np.meshgrid(lons, lats)
     
@@ -242,7 +230,6 @@ with st.sidebar:
     
     st.divider()
     liq_mode = st.selectbox("ASHRAE Liquid Mode", ["W32", "W40", "W45"])
-    # Extended resolution options
     res = st.select_slider("Map Resolution", options=[5.0, 4.5, 4.0, 3.5, 3.0, 2.5, 2.0, 1.5, 1.0, 0.5], value=5.0)
 
 # --- APP LOGIC ---
@@ -263,7 +250,6 @@ if not df.empty:
     df['n_pue'] = norm_metric(df['PUE'])
     df['n_wue'] = norm_metric(df['WUE'])
     
-    # Standardized CUE calculation
     if 'CEF_kgCO2_per_kWh' in df.columns:
         df['CUE'] = df['PUE'] * df['CEF_kgCO2_per_kWh']
     else:
@@ -283,11 +269,9 @@ if not df.empty:
         st.subheader("Best Cooling Configuration")
         col_air, col_liq = st.columns(2)
         
-        # Prepare Data for Air-Cooled
         map_data_air = filtered[filtered['ArchID'].isin(ARCHS_AIR)].sort_values('Suitability', ascending=False).drop_duplicates('ClimateKey')
         map_data_air = map_data_air.dropna(subset=['Lon', 'Lat', 'ArchID'])
         
-        # Prepare Data for Liquid-Cooled
         map_data_liq = filtered[filtered['ArchID'].isin(ARCHS_LIQUID)].sort_values('Suitability', ascending=False).drop_duplicates('ClimateKey')
         map_data_liq = map_data_liq.dropna(subset=['Lon', 'Lat', 'ArchID'])
 
@@ -299,17 +283,21 @@ if not df.empty:
                     fig_a = plt.figure(figsize=(8, 5))
                     ax = plt.axes(projection=ccrs.Robinson())
                     ax.set_global()
-                    # Use air-specific cmap and range (1-6)
-                    mesh = ax.pcolormesh(xx, yy, Z, cmap=air_arch_cmap, vmin=0.5, vmax=6.5, transform=ccrs.PlateCarree(), shading='nearest', rasterized=True)
-                    ax.add_feature(cfeature.OCEAN, facecolor='#eef7fa', zorder=2)
-                    ax.add_feature(cfeature.LAND, facecolor='#fdfdfd', zorder=0)
-                    ax.coastlines(resolution='110m', linewidth=0.4, zorder=4)
-                    
-                    cb = plt.colorbar(mesh, orientation='horizontal', pad=0.08, shrink=0.9)
-                    cb.ax.tick_params(labelsize=7)
-                    cb.set_ticks(range(1, 7))
-                    cb.set_ticklabels([ARCH_MAP[i] for i in range(1, 7)], rotation=45)
-                    st.pyplot(fig_a)
+                    try:
+                        mesh = ax.pcolormesh(xx, yy, Z, cmap=air_arch_cmap, vmin=0.5, vmax=6.5, transform=ccrs.PlateCarree(), shading='nearest', rasterized=True)
+                        ax.add_feature(cfeature.OCEAN, facecolor='#eef7fa', zorder=2)
+                        ax.add_feature(cfeature.LAND, facecolor='#fdfdfd', zorder=0)
+                        ax.coastlines(resolution='110m', linewidth=0.4, zorder=4)
+                        
+                        cb = plt.colorbar(mesh, orientation='horizontal', pad=0.08, shrink=0.9)
+                        cb.ax.tick_params(labelsize=7)
+                        cb.set_ticks(range(1, 7))
+                        cb.set_ticklabels([ARCH_MAP[i] for i in range(1, 7)], rotation=45)
+                        st.pyplot(fig_a)
+                    except Exception as e:
+                        st.warning("⚠️ High resolution projection singularity encountered. Falling back to point view.")
+                        ax.scatter(map_data_air['Lon'], map_data_air['Lat'], c=map_data_air['ArchID'], cmap=air_arch_cmap, transform=ccrs.PlateCarree(), s=5)
+                        st.pyplot(fig_a)
                     plt.close(fig_a)
 
         with col_liq:
@@ -320,72 +308,60 @@ if not df.empty:
                     fig_l = plt.figure(figsize=(8, 5))
                     ax = plt.axes(projection=ccrs.Robinson())
                     ax.set_global()
-                    # Use liquid-specific cmap and range (7-12)
-                    mesh = ax.pcolormesh(xx, yy, Z, cmap=liq_arch_cmap, vmin=6.5, vmax=12.5, transform=ccrs.PlateCarree(), shading='nearest', rasterized=True)
-                    ax.add_feature(cfeature.OCEAN, facecolor='#eef7fa', zorder=2)
-                    ax.add_feature(cfeature.LAND, facecolor='#fdfdfd', zorder=0)
-                    ax.coastlines(resolution='110m', linewidth=0.4, zorder=4)
-                    
-                    cb = plt.colorbar(mesh, orientation='horizontal', pad=0.08, shrink=0.9)
-                    cb.ax.tick_params(labelsize=7)
-                    cb.set_ticks(range(7, 13))
-                    cb.set_ticklabels([ARCH_MAP[i] for i in range(7, 13)], rotation=45)
-                    st.pyplot(fig_l)
+                    try:
+                        mesh = ax.pcolormesh(xx, yy, Z, cmap=liq_arch_cmap, vmin=6.5, vmax=12.5, transform=ccrs.PlateCarree(), shading='nearest', rasterized=True)
+                        ax.add_feature(cfeature.OCEAN, facecolor='#eef7fa', zorder=2)
+                        ax.add_feature(cfeature.LAND, facecolor='#fdfdfd', zorder=0)
+                        ax.coastlines(resolution='110m', linewidth=0.4, zorder=4)
+                        
+                        cb = plt.colorbar(mesh, orientation='horizontal', pad=0.08, shrink=0.9)
+                        cb.ax.tick_params(labelsize=7)
+                        cb.set_ticks(range(7, 13))
+                        cb.set_ticklabels([ARCH_MAP[i] for i in range(7, 13)], rotation=45)
+                        st.pyplot(fig_l)
+                    except Exception as e:
+                        st.warning("⚠️ Projection singularity encountered. Using point view fallback.")
+                        ax.scatter(map_data_liq['Lon'], map_data_liq['Lat'], c=map_data_liq['ArchID'], cmap=liq_arch_cmap, transform=ccrs.PlateCarree(), s=5)
+                        st.pyplot(fig_l)
                     plt.close(fig_l)
 
     with tab2:
         p_arch_name = st.selectbox("Choose Cooling Architecture", [f"{ARCH_MAP[i]}" for i in range(1, 13)], key="t2_arch")
-        
-        panel_df = filtered[filtered['ArchID'] == INV_ARCH_MAP[p_arch_name]]
-        panel_df = panel_df.dropna(subset=['Lon', 'Lat'])
+        panel_df = filtered[filtered['ArchID'] == INV_ARCH_MAP[p_arch_name]].dropna(subset=['Lon', 'Lat'])
         
         metrics_list = ['Suitability', 'Thermal Compliance', 'PUE', 'WUE', 'CUE', 'FC', 'PMC', 'FMC']
         meta_panel = {
-            'Suitability': (plt.cm.Spectral, (0, 1), ''),
-            'Thermal Compliance': (custom_thermal_cmap, (0, 5), '(ASHRAE)'),
-            'PUE': (plt.cm.RdYlGn_r, (1.1, 1.7), ''),
-            'WUE': (plt.cm.Blues, (0, 2.5), '(L/kWh)'),
-            'CUE': (plt.cm.Purples, (0, 1.5), '(kgCO2/kWh)'),
-            'FC': (plt.cm.YlGn, (0, 1), '(Ratio)'),
-            'PMC': (plt.cm.YlOrBr, (0, 1), '(Ratio)'),
-            'FMC': (plt.cm.OrRd, (0, 1), '(Ratio)')
+            'Suitability': (plt.cm.Spectral, (0, 1), ''), 'Thermal Compliance': (custom_thermal_cmap, (0, 5), '(ASHRAE)'),
+            'PUE': (plt.cm.RdYlGn_r, (1.1, 1.7), ''), 'WUE': (plt.cm.Blues, (0, 2.5), '(L/kWh)'),
+            'CUE': (plt.cm.Purples, (0, 1.5), '(kgCO2/kWh)'), 'FC': (plt.cm.YlGn, (0, 1), '(Ratio)'),
+            'PMC': (plt.cm.YlOrBr, (0, 1), '(Ratio)'), 'FMC': (plt.cm.OrRd, (0, 1), '(Ratio)')
         }
 
-        if panel_df.empty:
-            st.warning("No data found.")
-        else:
+        if not panel_df.empty:
             for row_idx in range(4):
                 cols = st.columns(2)
                 for col_idx in range(2):
                     i = row_idx * 2 + col_idx
                     metric = metrics_list[i]
-                    
                     with cols[col_idx]:
                         fig_m = plt.figure(figsize=(6, 4))
                         ax = plt.axes(projection=ccrs.Robinson())
                         ax.set_global()
-                        
                         xx, yy, Z = get_interpolated_grid(panel_df[metric].values, panel_df[['Lon', 'Lat']].values, res)
                         if xx is not None:
                             cmap, v_range, unit = meta_panel[metric]
-                            
-                            mesh = ax.pcolormesh(xx, yy, Z, cmap=cmap, vmin=v_range[0], vmax=v_range[1], transform=ccrs.PlateCarree(), shading='nearest', rasterized=True)
-                            ax.add_feature(cfeature.OCEAN, facecolor='#eef7fa', zorder=2)
-                            ax.add_feature(cfeature.LAND, facecolor='#fdfdfd', zorder=0)
-                            ax.coastlines(resolution='110m', linewidth=0.3, zorder=4)
-                            
-                            cb = plt.colorbar(mesh, orientation='horizontal', pad=0.08, shrink=0.8)
-                            cb.ax.tick_params(labelsize=8)
-                            cb.set_label(f"{metric} {unit}", fontsize=10, labelpad=5)
-                            
-                            if metric == 'Thermal Compliance':
-                                cb.set_ticks([0, 1, 2, 3, 4, 5])
-                                cb.set_ticklabels(['W+', '45', '40', '32', '27', 'R'], fontsize=8)
-
-                            plt.tight_layout(pad=0.1)
-                            st.pyplot(fig_m, use_container_width=True)
-                        else:
-                            st.caption(f"Map {string.ascii_uppercase[i]} unavailable")
+                            try:
+                                mesh = ax.pcolormesh(xx, yy, Z, cmap=cmap, vmin=v_range[0], vmax=v_range[1], transform=ccrs.PlateCarree(), shading='nearest', rasterized=True)
+                                ax.add_feature(cfeature.OCEAN, facecolor='#eef7fa', zorder=2); ax.add_feature(cfeature.LAND, facecolor='#fdfdfd', zorder=0)
+                                ax.coastlines(resolution='110m', linewidth=0.3, zorder=4)
+                                cb = plt.colorbar(mesh, orientation='horizontal', pad=0.08, shrink=0.8)
+                                cb.ax.tick_params(labelsize=8); cb.set_label(f"{metric} {unit}", fontsize=10, labelpad=5)
+                                if metric == 'Thermal Compliance':
+                                    cb.set_ticks([0, 1, 2, 3, 4, 5]); cb.set_ticklabels(['W+', '45', '40', '32', '27', 'R'], fontsize=8)
+                                plt.tight_layout(pad=0.1); st.pyplot(fig_m, use_container_width=True)
+                            except:
+                                ax.scatter(panel_df['Lon'], panel_df['Lat'], c=panel_df[metric], cmap=cmap, vmin=v_range[0], vmax=v_range[1], transform=ccrs.PlateCarree(), s=3)
+                                st.pyplot(fig_m, use_container_width=True)
                         plt.close(fig_m)
 
     with tab3:
@@ -393,11 +369,8 @@ if not df.empty:
         summary = filtered.groupby('ArchID')['Suitability'].mean().reset_index()
         summary['Architecture'] = summary['ArchID'].map(ARCH_MAP)
         st.bar_chart(summary.set_index('Architecture')['Suitability'])
-        
-        # Determine which data to show based on what was computed
         display_df = filtered.sort_values(['ClimateKey', 'Suitability'], ascending=[True, False]).drop_duplicates('ClimateKey')
         display_df['Architecture'] = display_df['ArchID'].map(ARCH_MAP)
         st.dataframe(display_df[['ClimateKey', 'Architecture', 'Suitability', 'PUE', 'WUE', 'MaxT']].head(20), use_container_width=True)
-
 else:
     st.error("Data processing failed. Check your 'results_parquet' folder structure.")
