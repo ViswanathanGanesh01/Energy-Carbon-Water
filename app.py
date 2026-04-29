@@ -269,9 +269,11 @@ if not df.empty:
         st.subheader("Best Cooling Configuration")
         col_air, col_liq = st.columns(2)
         
+        # Prepare Data for Air-Cooled
         map_data_air = filtered[filtered['ArchID'].isin(ARCHS_AIR)].sort_values('Suitability', ascending=False).drop_duplicates('ClimateKey')
         map_data_air = map_data_air.dropna(subset=['Lon', 'Lat', 'ArchID'])
         
+        # Prepare Data for Liquid-Cooled
         map_data_liq = filtered[filtered['ArchID'].isin(ARCHS_LIQUID)].sort_values('Suitability', ascending=False).drop_duplicates('ClimateKey')
         map_data_liq = map_data_liq.dropna(subset=['Lon', 'Lat', 'ArchID'])
 
@@ -327,7 +329,8 @@ if not df.empty:
 
     with tab2:
         p_arch_name = st.selectbox("Choose Cooling Architecture", [f"{ARCH_MAP[i]}" for i in range(1, 13)], key="t2_arch")
-        panel_df = filtered[filtered['ArchID'] == INV_ARCH_MAP[p_arch_name]].dropna(subset=['Lon', 'Lat'])
+        current_arch_id = INV_ARCH_MAP[p_arch_name]
+        panel_df = filtered[filtered['ArchID'] == current_arch_id].dropna(subset=['Lon', 'Lat'])
         
         metrics_list = ['Suitability', 'Thermal Compliance', 'PUE', 'WUE', 'CUE', 'FC', 'PMC', 'FMC']
         meta_panel = {
@@ -356,8 +359,17 @@ if not df.empty:
                                 ax.coastlines(resolution='110m', linewidth=0.3, zorder=4)
                                 cb = plt.colorbar(mesh, orientation='horizontal', pad=0.08, shrink=0.8)
                                 cb.ax.tick_params(labelsize=8); cb.set_label(f"{metric} {unit}", fontsize=10, labelpad=5)
+                                
+                                # UPDATED DYNAMIC THERMAL LABELS
                                 if metric == 'Thermal Compliance':
-                                    cb.set_ticks([0, 1, 2, 3, 4, 5]); cb.set_ticklabels(['W+', '45', '40', '32', '27', 'R'], fontsize=8)
+                                    cb.set_ticks([0, 1, 2, 3, 4, 5])
+                                    if current_arch_id <= 6:
+                                        # Air Standards (ASHRAE A1-A4)
+                                        cb.set_ticklabels(['A4+', 'A4', 'A3', 'A2', 'A1', 'R'], fontsize=8)
+                                    else:
+                                        # Liquid Standards (ASHRAE Liquid Class)
+                                        cb.set_ticklabels(['W+', 'W45', 'W40', 'W32', 'W27', 'R'], fontsize=8)
+                                        
                                 plt.tight_layout(pad=0.1); st.pyplot(fig_m, use_container_width=True)
                             except:
                                 ax.scatter(panel_df['Lon'], panel_df['Lat'], c=panel_df[metric], cmap=cmap, vmin=v_range[0], vmax=v_range[1], transform=ccrs.PlateCarree(), s=3)
