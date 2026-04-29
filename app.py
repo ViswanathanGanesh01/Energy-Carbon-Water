@@ -248,9 +248,9 @@ if not df.empty:
         else:
             # Liquid: W32, W40, W45, W+ (4 categories)
             bins = [
-                {"max": 32.1, "score": 4}, # W32
-                {"max": 40.1, "score": 3}, # W40
-                {"max": 45.1, "score": 2}, # W45
+                {"max": 32.1, "score": 5}, # W32
+                {"max": 40.1, "score": 4}, # W40
+                {"max": 45.1, "score": 3}, # W45
                 {"max": 100.0, "score": 1} # W+
             ]
         for b in bins:
